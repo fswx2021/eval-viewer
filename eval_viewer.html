@@ -195,6 +195,10 @@ a:hover { text-decoration: underline; }
   <h1>PEV-Eval Viewer</h1>
   <span class="subtitle" id="headerStats"></span>
   <div class="spacer"></div>
+  <div id="uploadBox" style="margin-right:8px;">
+    <input type="file" id="fileInput" accept=".zip" style="display:none;">
+    <button onclick="document.getElementById('fileInput').click()" style="padding:4px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:12px;cursor:pointer;margin-left:4px;">上传文件</button>
+  </div>
   <div id="rootInputBox" style="display:none;margin-right:8px;">
     <input type="text" id="rootInput" placeholder="评测目录路径 (如 D:\web_scraping_eval)" style="padding:4px 8px;background:var(--bg);border:1px solid var(--bg4);border-radius:var(--radius);color:var(--fg);font-size:12px;width:320px;">
     <button onclick="loadFromAPI()" style="padding:4px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:12px;cursor:pointer;margin-left:4px;">扫描</button>
@@ -246,6 +250,33 @@ window.loadFromAPI = function() {
     .catch(err => alert('请求失败: ' + err.message));
 };
 
+// File upload function
+window.uploadFile = function(file) {
+  if (!file) return;
+  if (file.type !== 'application/zip' && !file.name.endsWith('.zip')) {
+    alert('请上传 zip 压缩文件');
+    return;
+  }
+  
+  document.getElementById('content').innerHTML = '<p style="padding:40px;color:var(--fg2)">上传中...请稍候</p>';
+  
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  fetch('/api/upload', {
+    method: 'POST',
+    body: formData
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.error) { alert('上传失败: ' + data.error); return; }
+    apiMode = true;
+    trialDetailCache = {};
+    initFromData(data);
+  })
+  .catch(err => alert('请求失败: ' + err.message));
+};
+
 // Detect mode and initialize
 if (window.VIEWER_DATA && !window.__STATIC_LOAD_FAILED) {
   // Static mode: viewer_data.js loaded successfully
@@ -260,10 +291,18 @@ if (window.VIEWER_DATA && !window.__STATIC_LOAD_FAILED) {
   document.getElementById('content').innerHTML = `
     <div style="padding:60px 40px;text-align:center;color:var(--fg2)">
       <h2 style="color:var(--fg);margin-bottom:16px">PEV-Eval Viewer</h2>
-      <p>请在顶部输入评测目录路径，然后点击「扫描」</p>
-      <p style="margin-top:8px;font-size:12px">示例: <code>D:\\web_scraping_eval</code></p>
+      <p>请在顶部点击「上传文件」按钮，选择评测数据的 zip 文件</p>
+      <p style="margin-top:8px;font-size:12px">或在输入框中输入本地目录路径，然后点击「扫描」</p>
       <p style="margin-top:16px;font-size:12px;color:var(--fg3)">需要通过 <code>python serve.py --open</code> 启动</p>
     </div>`;
+  
+  // Add file input listener
+  document.getElementById('fileInput').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (file) {
+      window.uploadFile(file);
+    }
+  });
 }
 
 // ── State ──
