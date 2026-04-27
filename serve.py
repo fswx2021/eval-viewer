@@ -26,10 +26,6 @@ import shutil
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 STATIC_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(STATIC_DIR, "uploaded_data")
-
-if not os.path.exists(DATA_DIR):
-    os.makedirs(DATA_DIR)
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import scanner
@@ -112,13 +108,7 @@ class ViewerHandler(BaseHTTPRequestHandler):
     def _get_root(self, qs):
         root = qs.get("root", [""])[0]
         if not root:
-            session_id = qs.get("session_id", [""])[0]
-            if session_id:
-                session_dir = os.path.join(DATA_DIR, session_id, "extracted")
-                if os.path.isdir(session_dir):
-                    return session_dir, None
-                return None, f"session not found: {session_id}"
-            return None, "missing 'root' or 'session_id' parameter"
+            return None, "missing 'root' parameter"
         root = os.path.abspath(root)
         if not os.path.isdir(root):
             return None, f"directory not found: {root}"
@@ -148,37 +138,41 @@ class ViewerHandler(BaseHTTPRequestHandler):
             filename = file_field.get("filename", "data.zip")
             data = file_field.get("data", b"")
 
-            session_id = str(uuid.uuid4())[:8]
-            session_dir = os.path.join(DATA_DIR, session_id)
-
-            zip_path = os.path.join(session_dir, filename)
-            os.makedirs(session_dir, exist_ok=True)
-
-            with open(zip_path, "wb") as f:
-                f.write(data)
-
-            extract_dir = os.path.join(session_dir, "extracted")
-            os.makedirs(extract_dir, exist_ok=True)
+            temp_dir = tempfile.mkdtemp(prefix="eval_viewer_")
 
             try:
-                with zipfile.ZipFile(zip_path, "r") as zf:
-                    zf.extractall(extract_dir)
-            except zipfile.BadZipFile:
-                shutil.rmtree(session_dir)
-                self._json_response(400, {"error": "invalid zip file"})
-                return
+                zip_path = os.path.join(temp_dir, filename)
+                with open(zip_path, "wb") as f:
+                    f.write(data)
 
-            os.remove(zip_path)
+                extract_dir = os.path.join(temp_dir, "extracted")
+                os.makedirs(extract_dir, exist_ok=True)
 
-            try:
+                try:
+                    with zipfile.ZipFile(zip_path, "r") as zf:
+                        zf.extractall(extract_dir)
+                except zipfile.BadZipFile:
+                    self._json_response(400, {"error": "invalid zip file"})
+                    return
+
                 scan_data = scanner.scan_root(extract_dir)
-                scan_data["session_id"] = session_id
-                scan_data["root"] = extract_dir
+
+                for task in scan_data.get("tasks", []):
+                    for trial in task.get("trials", []):
+                        trial_dir = trial.get("dir_name")
+                        if trial_dir:
+                            try:
+                                trial_detail = scanner.scan_trial_detail(extract_dir, task["task_id"], trial_dir)
+                                if "error" not in trial_detail:
+                                    trial["trajectory"] = trial_detail.get("trajectory", [])
+                                    trial["code_files"] = trial_detail.get("code_files", {})
+                            except Exception:
+                                pass
+
                 self._json_response(200, scan_data)
-            except Exception as e:
-                shutil.rmtree(session_dir)
-                self._json_response(500, {"error": f"scan failed: {str(e)}"})
-                return
+
+            finally:
+                shutil.rmtree(temp_dir, ignore_errors=True)
 
         except Exception as e:
             self._json_response(500, {"error": str(e)})
@@ -353,17 +347,8 @@ def app(environ, start_response):
         handler = _WSGIBase(environ, start_response)
         root = parsed_qs.get("root", [""])[0]
         if not root:
-            session_id = parsed_qs.get("session_id", [""])[0]
-            if session_id:
-                session_dir = os.path.join(DATA_DIR, session_id, "extracted")
-                if os.path.isdir(session_dir):
-                    root = session_dir
-                else:
-                    body = handler._json_response(400, {"error": f"session not found: {session_id}"})
-                    return [body]
-            else:
-                body = handler._json_response(400, {"error": "missing 'root' or 'session_id' parameter"})
-                return [body]
+            body = handler._json_response(400, {"error": "missing 'root' parameter"})
+            return [body]
         try:
             data = scanner.scan_root(root)
             body = handler._json_response(200, data)
@@ -375,17 +360,8 @@ def app(environ, start_response):
         handler = _WSGIBase(environ, start_response)
         root = parsed_qs.get("root", [""])[0]
         if not root:
-            session_id = parsed_qs.get("session_id", [""])[0]
-            if session_id:
-                session_dir = os.path.join(DATA_DIR, session_id, "extracted")
-                if os.path.isdir(session_dir):
-                    root = session_dir
-                else:
-                    body = handler._json_response(400, {"error": f"session not found: {session_id}"})
-                    return [body]
-            else:
-                body = handler._json_response(400, {"error": "missing 'root' or 'session_id' parameter"})
-                return [body]
+            body = handler._json_response(400, {"error": "missing 'root' parameter"})
+            return [body]
         task_id = parsed_qs.get("task", [""])[0]
         trial_dir = parsed_qs.get("trial", [""])[0]
         if not task_id or not trial_dir:
@@ -405,17 +381,8 @@ def app(environ, start_response):
         handler = _WSGIBase(environ, start_response)
         root = parsed_qs.get("root", [""])[0]
         if not root:
-            session_id = parsed_qs.get("session_id", [""])[0]
-            if session_id:
-                session_dir = os.path.join(DATA_DIR, session_id, "extracted")
-                if os.path.isdir(session_dir):
-                    root = session_dir
-                else:
-                    body = handler._json_response(400, {"error": f"session not found: {session_id}"})
-                    return [body]
-            else:
-                body = handler._json_response(400, {"error": "missing 'root' or 'session_id' parameter"})
-                return [body]
+            body = handler._json_response(400, {"error": "missing 'root' parameter"})
+            return [body]
         try:
             result = validator.validate_path(root)
             body = handler._json_response(200, result.to_dict())
@@ -496,36 +463,42 @@ def app(environ, start_response):
             filename = file_field.get("filename", "data.zip")
             file_data = file_field.get("data", b"")
 
-            session_id = str(uuid.uuid4())[:8]
-            session_dir = os.path.join(DATA_DIR, session_id)
-
-            zip_path = os.path.join(session_dir, filename)
-            os.makedirs(session_dir, exist_ok=True)
-
-            with open(zip_path, "wb") as f:
-                f.write(file_data)
-
-            extract_dir = os.path.join(session_dir, "extracted")
-            os.makedirs(extract_dir, exist_ok=True)
+            temp_dir = tempfile.mkdtemp(prefix="eval_viewer_")
 
             try:
-                with zipfile.ZipFile(zip_path, "r") as zf:
-                    zf.extractall(extract_dir)
-            except zipfile.BadZipFile:
-                shutil.rmtree(session_dir)
-                body = handler._json_response(400, {"error": "invalid zip file"})
-                return [body]
+                zip_path = os.path.join(temp_dir, filename)
+                with open(zip_path, "wb") as f:
+                    f.write(file_data)
 
-            os.remove(zip_path)
+                extract_dir = os.path.join(temp_dir, "extracted")
+                os.makedirs(extract_dir, exist_ok=True)
 
-            try:
+                try:
+                    with zipfile.ZipFile(zip_path, "r") as zf:
+                        zf.extractall(extract_dir)
+                except zipfile.BadZipFile:
+                    body = handler._json_response(400, {"error": "invalid zip file"})
+                    return [body]
+
                 scan_data = scanner.scan_root(extract_dir)
-                scan_data["session_id"] = session_id
-                scan_data["root"] = extract_dir
+
+                for task in scan_data.get("tasks", []):
+                    for trial in task.get("trials", []):
+                        trial_dir = trial.get("dir_name")
+                        if trial_dir:
+                            try:
+                                trial_detail = scanner.scan_trial_detail(extract_dir, task["task_id"], trial_dir)
+                                if "error" not in trial_detail:
+                                    trial["trajectory"] = trial_detail.get("trajectory", [])
+                                    trial["code_files"] = trial_detail.get("code_files", {})
+                            except Exception:
+                                pass
+
                 body = handler._json_response(200, scan_data)
-            except Exception as e:
-                shutil.rmtree(session_dir)
-                body = handler._json_response(500, {"error": f"scan failed: {str(e)}"})
+
+            finally:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+
             return [body]
 
         except Exception as e:
