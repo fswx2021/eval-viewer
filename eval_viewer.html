@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PEV-Eval Viewer</title>
+<style>
+:root {
+  --bg: #0d1117; --bg2: #161b22; --bg3: #21262d; --bg4: #30363d;
+  --fg: #c9d1d9; --fg2: #8b949e; --fg3: #484f58;
+  --accent: #58a6ff; --green: #3fb950; --red: #f85149; --yellow: #d29922; --purple: #bc8cff; --orange: #f0883e;
+  --sidebar-w: 280px; --header-h: 48px;
+  --radius: 6px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--fg); font-size: 14px; line-height: 1.6; overflow: hidden; height: 100vh; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Header */
+.header { height: var(--header-h); background: var(--bg2); border-bottom: 1px solid var(--bg4); display: flex; align-items: center; padding: 0 16px; gap: 12px; }
+.header h1 { font-size: 16px; font-weight: 600; color: var(--fg); white-space: nowrap; }
+.header .subtitle { color: var(--fg2); font-size: 12px; }
+.header .spacer { flex: 1; }
+.model-filter { padding: 4px 8px; background: var(--bg3); border: 1px solid var(--bg4); border-radius: var(--radius); color: var(--fg); font-size: 12px; }
+
+/* Layout */
+.main { display: flex; height: calc(100vh - var(--header-h)); }
+
+/* Sidebar */
+.sidebar { width: var(--sidebar-w); min-width: var(--sidebar-w); background: var(--bg2); border-right: 1px solid var(--bg4); display: flex; flex-direction: column; overflow: hidden; }
+.search-box { padding: 8px; border-bottom: 1px solid var(--bg4); }
+.search-box input { width: 100%; padding: 6px 10px; background: var(--bg); border: 1px solid var(--bg4); border-radius: var(--radius); color: var(--fg); font-size: 12px; outline: none; }
+.search-box input:focus { border-color: var(--accent); }
+.tree { flex: 1; overflow-y: auto; padding: 4px 0; }
+.tree::-webkit-scrollbar { width: 6px; }
+.tree::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
+
+.tree-bench { padding: 2px 0; }
+.tree-bench-label { padding: 4px 12px; font-size: 11px; font-weight: 600; color: var(--fg2); text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 4px; }
+.tree-bench-label:hover { color: var(--fg); }
+.tree-bench-label .arrow { transition: transform 0.15s; font-size: 10px; }
+.tree-bench-label .arrow.open { transform: rotate(90deg); }
+.tree-bench-tasks { }
+.tree-bench-tasks.collapsed { display: none; }
+
+.tree-task { padding: 2px 0; }
+.tree-task-label { padding: 3px 12px 3px 20px; font-size: 12px; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 4px; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tree-task-label:hover { background: var(--bg3); }
+.tree-task-label .arrow { transition: transform 0.15s; font-size: 10px; color: var(--fg3); }
+.tree-task-label .arrow.open { transform: rotate(90deg); }
+.tree-task-label .tid { color: var(--fg2); }
+.tree-task-trials { }
+.tree-task-trials.collapsed { display: none; }
+
+.tree-trial { padding: 2px 12px 2px 36px; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; user-select: none; }
+.tree-trial:hover { background: var(--bg3); }
+.tree-trial.active { background: var(--accent); color: #fff; border-radius: 3px; margin: 1px 4px; padding-left: 32px; }
+.tree-trial .model-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-trial .score-badge { font-size: 11px; font-weight: 600; padding: 1px 5px; border-radius: 3px; white-space: nowrap; }
+.score-high { background: rgba(63,185,80,0.2); color: var(--green); }
+.score-mid { background: rgba(210,153,34,0.2); color: var(--yellow); }
+.score-low { background: rgba(248,81,73,0.2); color: var(--red); }
+.score-none { background: var(--bg4); color: var(--fg3); }
+
+/* Content */
+.content { flex: 1; overflow-y: auto; padding: 0; }
+.content::-webkit-scrollbar { width: 8px; }
+.content::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 4px; }
+
+/* Dashboard */
+.dashboard { padding: 24px; max-width: 1200px; }
+.dash-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.dash-card { background: var(--bg2); border: 1px solid var(--bg4); border-radius: var(--radius); padding: 16px; }
+.dash-card .label { font-size: 12px; color: var(--fg2); margin-bottom: 4px; }
+.dash-card .value { font-size: 28px; font-weight: 700; color: var(--fg); }
+.dash-section { margin-bottom: 24px; }
+.dash-section h3 { font-size: 14px; color: var(--fg2); margin-bottom: 12px; border-bottom: 1px solid var(--bg4); padding-bottom: 6px; }
+
+/* Leaderboard */
+.leaderboard { width: 100%; border-collapse: collapse; }
+.leaderboard th, .leaderboard td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--bg4); font-size: 13px; }
+.leaderboard th { color: var(--fg2); font-weight: 600; background: var(--bg2); position: sticky; top: 0; }
+.leaderboard tr:hover td { background: var(--bg3); }
+.leaderboard .rank { width: 32px; text-align: center; color: var(--fg3); }
+
+/* Heatmap */
+.heatmap-wrap { overflow-x: auto; }
+.heatmap { border-collapse: collapse; font-size: 11px; }
+.heatmap th, .heatmap td { padding: 4px 6px; border: 1px solid var(--bg4); text-align: center; white-space: nowrap; }
+.heatmap th { background: var(--bg2); color: var(--fg2); font-weight: 600; position: sticky; top: 0; z-index: 1; }
+.heatmap th.row-header { text-align: left; position: sticky; left: 0; z-index: 2; background: var(--bg2); }
+.heatmap td.row-header { text-align: left; position: sticky; left: 0; background: var(--bg); font-weight: 500; }
+.heatmap td.cell { min-width: 48px; font-weight: 600; cursor: default; }
+
+/* Tabs */
+.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--bg4); background: var(--bg2); padding: 0 16px; position: sticky; top: 0; z-index: 10; }
+.tab { padding: 10px 16px; font-size: 13px; cursor: pointer; color: var(--fg2); border-bottom: 2px solid transparent; user-select: none; white-space: nowrap; }
+.tab:hover { color: var(--fg); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-content { display: none; padding: 20px; }
+.tab-content.active { display: block; }
+
+/* Trial header */
+.trial-header { padding: 12px 20px; background: var(--bg2); border-bottom: 1px solid var(--bg4); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.trial-header .task-title { font-size: 15px; font-weight: 600; }
+.trial-header .model-tag { font-size: 12px; padding: 2px 8px; background: var(--bg3); border-radius: var(--radius); color: var(--accent); }
+.trial-header .score-tag { font-size: 13px; font-weight: 700; padding: 2px 10px; border-radius: var(--radius); }
+
+/* Instruction (markdown) */
+.md-content { max-width: 900px; line-height: 1.8; }
+.md-content h1 { font-size: 20px; margin: 16px 0 8px; border-bottom: 1px solid var(--bg4); padding-bottom: 4px; }
+.md-content h2 { font-size: 17px; margin: 14px 0 6px; color: var(--accent); }
+.md-content h3 { font-size: 15px; margin: 12px 0 4px; }
+.md-content p { margin: 6px 0; }
+.md-content ul, .md-content ol { padding-left: 24px; margin: 6px 0; }
+.md-content code { background: var(--bg3); padding: 1px 4px; border-radius: 3px; font-size: 13px; font-family: 'Cascadia Code', 'Fira Code', monospace; }
+.md-content pre { background: var(--bg3); padding: 12px; border-radius: var(--radius); overflow-x: auto; margin: 8px 0; }
+.md-content pre code { background: none; padding: 0; }
+.md-content table { border-collapse: collapse; margin: 8px 0; width: 100%; }
+.md-content table th, .md-content table td { padding: 6px 10px; border: 1px solid var(--bg4); font-size: 13px; }
+.md-content table th { background: var(--bg3); }
+.md-content blockquote { border-left: 3px solid var(--bg4); padding-left: 12px; color: var(--fg2); margin: 8px 0; }
+
+/* Groundtruth */
+.gt-json { background: var(--bg3); padding: 16px; border-radius: var(--radius); overflow-x: auto; font-family: 'Cascadia Code', monospace; font-size: 12px; white-space: pre; max-height: 600px; overflow-y: auto; }
+.gt-constraint-card { background: var(--bg2); border: 1px solid var(--bg4); border-radius: var(--radius); padding: 12px; margin-bottom: 10px; }
+.gt-constraint-card .field-name { font-weight: 600; color: var(--accent); font-size: 14px; }
+.gt-constraint-card .constraint-detail { margin-top: 4px; font-size: 12px; color: var(--fg2); }
+.gt-constraint-card .constraint-detail span { margin-right: 12px; }
+
+/* Test results */
+.test-summary { display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+.test-stat { padding: 8px 16px; background: var(--bg2); border: 1px solid var(--bg4); border-radius: var(--radius); text-align: center; }
+.test-stat .num { font-size: 22px; font-weight: 700; }
+.test-stat .lbl { font-size: 11px; color: var(--fg2); }
+.test-table { width: 100%; border-collapse: collapse; }
+.test-table th, .test-table td { padding: 6px 10px; border-bottom: 1px solid var(--bg4); font-size: 12px; text-align: left; }
+.test-table th { color: var(--fg2); font-weight: 600; background: var(--bg2); position: sticky; top: 42px; z-index: 5; }
+.test-table .status-pass { color: var(--green); font-weight: 600; }
+.test-table .status-fail { color: var(--red); font-weight: 600; }
+.test-table .status-skip { color: var(--fg3); }
+.test-table .docstring { color: var(--fg2); font-size: 11px; max-width: 400px; }
+.test-table .class-sep td { background: var(--bg3); font-weight: 600; color: var(--accent); font-size: 12px; padding: 4px 10px; }
+.process-score-section { margin-top: 16px; padding: 12px; background: var(--bg2); border: 1px solid var(--bg4); border-radius: var(--radius); }
+.process-score-section h4 { margin-bottom: 8px; color: var(--orange); }
+.dim-bar { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 12px; }
+.dim-bar .dim-name { width: 120px; text-align: right; color: var(--fg2); }
+.dim-bar .dim-track { flex: 1; height: 12px; background: var(--bg4); border-radius: 6px; overflow: hidden; max-width: 300px; }
+.dim-bar .dim-fill { height: 100%; border-radius: 6px; }
+.dim-bar .dim-val { color: var(--fg); font-weight: 600; width: 40px; }
+
+/* Trajectory */
+.traj-loading { text-align: center; padding: 40px; color: var(--fg2); }
+.traj-step { margin-bottom: 2px; }
+.traj-step-header { padding: 6px 12px; background: var(--bg2); border: 1px solid var(--bg4); border-radius: var(--radius) var(--radius) 0 0; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 12px; user-select: none; }
+.traj-step-header:hover { background: var(--bg3); }
+.traj-step-header .step-num { font-weight: 700; color: var(--accent); min-width: 48px; }
+.traj-step-header .step-summary { color: var(--fg2); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.traj-step-header .step-tokens { font-size: 11px; color: var(--fg3); }
+.traj-step-body { display: none; border: 1px solid var(--bg4); border-top: none; border-radius: 0 0 var(--radius) var(--radius); padding: 8px 12px; margin-bottom: 8px; }
+.traj-step-body.open { display: block; }
+.traj-event { margin: 4px 0; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+.traj-event.reasoning { background: rgba(188,140,255,0.1); border-left: 3px solid var(--purple); }
+.traj-event.text { background: rgba(201,209,217,0.05); border-left: 3px solid var(--fg3); }
+.traj-event.tool_use { background: rgba(88,166,255,0.08); border-left: 3px solid var(--accent); }
+.traj-event .event-label { font-size: 10px; font-weight: 700; text-transform: uppercase; margin-bottom: 2px; }
+.traj-event .event-label.reasoning { color: var(--purple); }
+.traj-event .event-label.text { color: var(--fg2); }
+.traj-event .event-label.tool { color: var(--accent); }
+.traj-event pre { white-space: pre-wrap; word-break: break-all; font-family: 'Cascadia Code', monospace; font-size: 11px; max-height: 300px; overflow-y: auto; }
+.traj-filters { padding: 8px 0; display: flex; gap: 8px; margin-bottom: 8px; }
+.traj-filters label { font-size: 12px; display: flex; align-items: center; gap: 4px; cursor: pointer; color: var(--fg2); }
+.traj-filters input[type="checkbox"] { accent-color: var(--accent); }
+
+/* Code files */
+.code-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--bg4); margin-bottom: 8px; flex-wrap: wrap; }
+.code-tab { padding: 6px 12px; font-size: 12px; cursor: pointer; color: var(--fg2); border-bottom: 2px solid transparent; }
+.code-tab:hover { color: var(--fg); }
+.code-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.code-block { background: var(--bg3); padding: 12px; border-radius: var(--radius); overflow-x: auto; font-family: 'Cascadia Code', monospace; font-size: 12px; white-space: pre; max-height: calc(100vh - 200px); overflow-y: auto; line-height: 1.5; }
+
+/* Env info */
+.env-content { max-width: 800px; font-family: 'Cascadia Code', monospace; font-size: 13px; white-space: pre-wrap; background: var(--bg3); padding: 16px; border-radius: var(--radius); }
+
+/* Scrollbar for all */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>PEV-Eval Viewer</h1>
+  <span class="subtitle" id="headerStats"></span>
+  <div class="spacer"></div>
+  <div id="rootInputBox" style="display:none;margin-right:8px;">
+    <input type="text" id="rootInput" placeholder="评测目录路径 (如 D:\web_scraping_eval)" style="padding:4px 8px;background:var(--bg);border:1px solid var(--bg4);border-radius:var(--radius);color:var(--fg);font-size:12px;width:320px;">
+    <button onclick="loadFromAPI()" style="padding:4px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:12px;cursor:pointer;margin-left:4px;">扫描</button>
+  </div>
+  <select class="model-filter" id="modelFilter"><option value="">All Models</option></select>
+</div>
+
+<div class="main">
+  <div class="sidebar">
+    <div class="search-box"><input type="text" id="searchInput" placeholder="Search tasks / models..."></div>
+    <div class="tree" id="tree"></div>
+  </div>
+  <div class="content" id="content"></div>
+</div>
+
+<script src="viewer_data.js" onerror="window.__STATIC_LOAD_FAILED=true"></script>
+<script>
+(function() {
+'use strict';
+
+// ── Dual mode: API (serve.py) vs Static (viewer_data.js) ──
+let tasks = [];
+let benchmarks = [];
+let apiMode = false;
+let apiRoot = '';
+
+function initFromData(data) {
+  tasks = data.tasks || [];
+  benchmarks = data.benchmarks || [];
+  apiRoot = data.root || '';
+  populateModels();
+  renderTree();
+  renderDashboard();
+}
+
+// API mode: load from serve.py
+window.loadFromAPI = function() {
+  const root = document.getElementById('rootInput').value.trim();
+  if (!root) return;
+  document.getElementById('content').innerHTML = '<p style="padding:40px;color:var(--fg2)">扫描中...</p>';
+  fetch(`/api/scan?root=${encodeURIComponent(root)}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { alert('扫描失败: ' + data.error); return; }
+      apiMode = true;
+      trialDetailCache = {};
+      initFromData(data);
+    })
+    .catch(err => alert('请求失败: ' + err.message));
+};
+
+// Detect mode and initialize
+if (window.VIEWER_DATA && !window.__STATIC_LOAD_FAILED) {
+  // Static mode: viewer_data.js loaded successfully
+  initFromData(window.VIEWER_DATA);
+  // Also check if serve.py is available (for trial detail loading)
+  fetch('/api/scan?root=__ping__').catch(() => {});
+} else {
+  // API mode: show root input
+  apiMode = true;
+  document.getElementById('rootInputBox').style.display = '';
+  document.getElementById('rootInput').addEventListener('keydown', e => { if (e.key === 'Enter') window.loadFromAPI(); });
+  document.getElementById('content').innerHTML = `
+    <div style="padding:60px 40px;text-align:center;color:var(--fg2)">
+      <h2 style="color:var(--fg);margin-bottom:16px">PEV-Eval Viewer</h2>
+      <p>请在顶部输入评测目录路径，然后点击「扫描」</p>
+      <p style="margin-top:8px;font-size:12px">示例: <code>D:\\web_scraping_eval</code></p>
+      <p style="margin-top:16px;font-size:12px;color:var(--fg3)">需要通过 <code>python serve.py --open</code> 启动</p>
+    </div>`;
+}
+
+// ── State ──
+let currentTaskId = null;
+let currentTrialIdx = null;
+let currentTab = 0;
+let trialDetailCache = {};
+let modelFilterValue = '';
+let searchValue = '';
+
+// ── Utility ──
+function esc(s) {
+  if (typeof s !== 'string') return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function scoreCls(s) {
+  if (s == null) return 'score-none';
+  if (s >= 80) return 'score-high';
+  if (s >= 40) return 'score-mid';
+  return 'score-low';
+}
+
+function scoreText(s) {
+  if (s == null) return '—';
+  return s.toFixed(1) + '%';
+}
+
+function scoreColor(s) {
+  if (s == null) return 'var(--bg4)';
+  if (s >= 80) return 'var(--green)';
+  if (s >= 40) return 'var(--yellow)';
+  return 'var(--red)';
+}
+
+function heatColor(s) {
+  if (s == null) return 'var(--bg4)';
+  const r = s / 100;
+  if (r >= 0.8) return `rgba(63,185,80,${0.2 + r * 0.6})`;
+  if (r >= 0.4) return `rgba(210,153,34,${0.15 + r * 0.5})`;
+  return `rgba(248,81,73,${0.15 + (1 - r) * 0.4})`;
+}
+
+// simple markdown -> HTML
+function md(text) {
+  if (!text) return '';
+  let h = esc(text);
+  // code blocks
+  h = h.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => `<pre><code>${code}</code></pre>`);
+  // inline code
+  h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // headers
+  h = h.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  h = h.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  h = h.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  // bold
+  h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // tables
+  h = h.replace(/^(\|.+\|)\n(\|[-| :]+\|)\n((?:\|.+\|\n?)*)/gm, (_, header, sep, body) => {
+    const ths = header.split('|').filter(c => c.trim()).map(c => `<th>${c.trim()}</th>`).join('');
+    const rows = body.trim().split('\n').map(row => {
+      const tds = row.split('|').filter(c => c.trim()).map(c => `<td>${c.trim()}</td>`).join('');
+      return `<tr>${tds}</tr>`;
+    }).join('');
+    return `<table><thead><tr>${ths}</tr></thead><tbody>${rows}</tbody></table>`;
+  });
+  // lists
+  h = h.replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>');
+  h = h.replace(/^- (.+)$/gm, '<li>$1</li>');
+  // blockquote
+  h = h.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+  // paragraphs - lines not already wrapped in tags
+  h = h.replace(/^(?!<[huptlb])(.+)$/gm, '<p>$1</p>');
+  return h;
+}
+
+// ── Collect all models + build filter + header stats ──
+function populateModels() {
+  const allModels = new Set();
+  tasks.forEach(t => t.trials.forEach(tr => allModels.add(tr.model)));
+  const modelList = [...allModels].sort();
+
+  const modelFilterEl = document.getElementById('modelFilter');
+  // Reset options
+  modelFilterEl.innerHTML = '<option value="">All Models</option>';
+  modelList.forEach(m => {
+    const o = document.createElement('option');
+    o.value = m; o.textContent = m;
+    modelFilterEl.appendChild(o);
+  });
+
+  const totalTrials = tasks.reduce((s, t) => s + t.trials.length, 0);
+  document.getElementById('headerStats').textContent = `${tasks.length} tasks | ${totalTrials} trials | ${benchmarks.length} benchmarks`;
+}
+
+const modelFilterEl = document.getElementById('modelFilter');
+modelFilterEl.addEventListener('change', () => {
+  modelFilterValue = modelFilterEl.value;
+  renderTree();
+  if (currentTaskId == null) renderDashboard();
+});
+
+// ── Search ──
+document.getElementById('searchInput').addEventListener('input', e => {
+  searchValue = e.target.value.toLowerCase();
+  renderTree();
+});
+
+// ── Sidebar tree ──
+function renderTree() {
+  const tree = document.getElementById('tree');
+  let html = '';
+
+  benchmarks.forEach(bench => {
+    const benchTasks = tasks.filter(t => t.bench === bench.name);
+    let hasVisible = false;
+
+    let taskHtml = '';
+    benchTasks.forEach(task => {
+      const trials = filterTrials(task.trials);
+      const matchesSearch = !searchValue ||
+        task.task_id.toLowerCase().includes(searchValue) ||
+        task.title.toLowerCase().includes(searchValue) ||
+        trials.some(tr => (tr.name || tr.model).toLowerCase().includes(searchValue));
+      if (!matchesSearch && trials.length === 0) return;
+      hasVisible = true;
+
+      const isExpanded = currentTaskId === task.task_id;
+      taskHtml += `<div class="tree-task" data-task="${esc(task.task_id)}">
+        <div class="tree-task-label" onclick="toggleTask('${esc(task.task_id)}')">
+          <span class="arrow ${isExpanded ? 'open' : ''}">&#9654;</span>
+          <span class="tid">${esc(task.task_id.replace(/^(web_scraping_|api_controlling_)/, ''))}</span>
+          ${esc(task.title.substring(0, 20))}
+        </div>
+        <div class="tree-task-trials ${isExpanded ? '' : 'collapsed'}">
+          ${trials.map((tr, idx) => {
+            const realIdx = task.trials.indexOf(tr);
+            const isActive = currentTaskId === task.task_id && currentTrialIdx === realIdx;
+            return `<div class="tree-trial ${isActive ? 'active' : ''}" onclick="selectTrial('${esc(task.task_id)}', ${realIdx})">
+              <span class="model-name">${esc(tr.name || tr.dir_name || tr.model)}</span>
+              <span class="score-badge ${scoreCls(tr.score)}">${scoreText(tr.score)}</span>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+    });
+
+    if (!hasVisible && searchValue) return;
+    html += `<div class="tree-bench">
+      <div class="tree-bench-label" onclick="toggleBench(this)">
+        <span class="arrow open">&#9654;</span>
+        ${esc(bench.name)} (${benchTasks.length})
+      </div>
+      <div class="tree-bench-tasks">${taskHtml}</div>
+    </div>`;
+  });
+
+  tree.innerHTML = html;
+}
+
+function filterTrials(trials) {
+  if (!modelFilterValue) return trials;
+  return trials.filter(tr => tr.model === modelFilterValue);
+}
+
+window.toggleBench = function(el) {
+  const arrow = el.querySelector('.arrow');
+  const tasks = el.nextElementSibling;
+  arrow.classList.toggle('open');
+  tasks.classList.toggle('collapsed');
+};
+
+window.toggleTask = function(taskId) {
+  if (currentTaskId === taskId && currentTrialIdx == null) {
+    currentTaskId = null;
+  } else {
+    currentTaskId = taskId;
+    currentTrialIdx = null;
+  }
+  renderTree();
+  if (currentTrialIdx == null && currentTaskId) {
+    // show task overview with first available trial or just instruction
+    const task = tasks.find(t => t.task_id === taskId);
+    const trials = filterTrials(task.trials);
+    if (trials.length > 0) {
+      currentTrialIdx = task.trials.indexOf(trials[0]);
+      renderTree();
+      renderTrialView();
+    } else {
+      renderTaskOverview(task);
+    }
+  } else {
+    renderDashboard();
+  }
+};
+
+window.selectTrial = function(taskId, trialIdx) {
+  currentTaskId = taskId;
+  currentTrialIdx = trialIdx;
+  currentTab = 0;
+  renderTree();
+  renderTrialView();
+};
+
+// ── Dashboard ──
+function renderDashboard() {
+  const content = document.getElementById('content');
+
+  // Compute model stats
+  const modelStats = {};
+  modelList.forEach(m => { modelStats[m] = { total: 0, sum: 0, count: 0 }; });
+  tasks.forEach(t => {
+    t.trials.forEach(tr => {
+      if (!modelStats[tr.model]) modelStats[tr.model] = { total: 0, sum: 0, count: 0 };
+      modelStats[tr.model].total++;
+      if (tr.score != null) {
+        modelStats[tr.model].sum += tr.score;
+        modelStats[tr.model].count++;
+      }
+    });
+  });
+
+  const ranked = modelList.filter(m => modelStats[m].count > 0)
+    .map(m => ({ model: m, avg: modelStats[m].sum / modelStats[m].count, count: modelStats[m].count, total: modelStats[m].total }))
+    .sort((a, b) => b.avg - a.avg);
+
+  const avgScore = ranked.length > 0 ? (ranked.reduce((s, r) => s + r.avg, 0) / ranked.length).toFixed(1) : '—';
+
+  let html = `<div class="dashboard">
+    <div class="dash-cards">
+      <div class="dash-card"><div class="label">Tasks</div><div class="value">${tasks.length}</div></div>
+      <div class="dash-card"><div class="label">Trials</div><div class="value">${totalTrials}</div></div>
+      <div class="dash-card"><div class="label">Models</div><div class="value">${modelList.length}</div></div>
+      <div class="dash-card"><div class="label">Avg Score</div><div class="value">${avgScore}%</div></div>
+    </div>
+
+    <div class="dash-section">
+      <h3>Model Leaderboard</h3>
+      <table class="leaderboard">
+        <thead><tr><th class="rank">#</th><th>Model</th><th>Avg Score</th><th>Tasks Graded</th></tr></thead>
+        <tbody>
+          ${ranked.map((r, i) => `<tr>
+            <td class="rank">${i + 1}</td>
+            <td>${esc(r.model)}</td>
+            <td><span style="color:${scoreColor(r.avg)};font-weight:700">${r.avg.toFixed(1)}%</span></td>
+            <td>${r.count} / ${r.total}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="dash-section">
+      <h3>Score Heatmap (Task x Model)</h3>
+      <div class="heatmap-wrap">
+        <table class="heatmap">
+          <thead><tr><th class="row-header">Task</th>${ranked.map(r => `<th>${esc(r.model)}</th>`).join('')}</tr></thead>
+          <tbody>
+            ${tasks.map(t => {
+              const cells = ranked.map(r => {
+                const tr = t.trials.find(x => x.model === r.model);
+                const s = tr ? tr.score : null;
+                return `<td class="cell" style="background:${heatColor(s)};color:${s != null ? '#fff' : 'var(--fg3)'}" title="${esc(t.task_id)} / ${esc(r.model)}: ${scoreText(s)}">${s != null ? Math.round(s) : '—'}</td>`;
+              }).join('');
+              return `<tr><td class="row-header" title="${esc(t.title)}">${esc(t.task_id.replace(/^(web_scraping_|api_controlling_)/, ''))}</td>${cells}</tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>`;
+
+  content.innerHTML = html;
+}
+
+// ── Task overview (no trial selected) ──
+function renderTaskOverview(task) {
+  const content = document.getElementById('content');
+  content.innerHTML = `<div style="padding:20px">
+    <h2 style="margin-bottom:12px">${esc(task.title)}</h2>
+    <div class="md-content">${md(task.instruction)}</div>
+  </div>`;
+}
+
+// ── Trial detail view ──
+function renderTrialView() {
+  const task = tasks.find(t => t.task_id === currentTaskId);
+  if (!task || currentTrialIdx == null) return;
+  const trial = task.trials[currentTrialIdx];
+  if (!trial) return;
+
+  const content = document.getElementById('content');
+  const tabNames = ['Instruction', 'Groundtruth', 'Test Results', 'Trajectory', 'Code', 'Environment'];
+
+  let html = `<div class="trial-header">
+    <span class="task-title">${esc(task.title)}</span>
+    <span class="model-tag">${esc(trial.model)}</span>
+    <span class="score-tag ${scoreCls(trial.score)}">${scoreText(trial.score)}</span>
+    ${trial.score_source === 'process' ? '<span style="font-size:11px;color:var(--orange)">(process score)</span>' : ''}
+  </div>
+  <div class="tabs">${tabNames.map((n, i) => `<div class="tab ${i === currentTab ? 'active' : ''}" onclick="switchTab(${i})">${n}</div>`).join('')}</div>
+  <div id="tabContainer">`;
+
+  // Tab 0: Instruction
+  html += `<div class="tab-content ${currentTab === 0 ? 'active' : ''}" id="tab0">
+    <div class="md-content">${md(task.instruction)}</div>
+  </div>`;
+
+  // Tab 1: Groundtruth
+  html += `<div class="tab-content ${currentTab === 1 ? 'active' : ''}" id="tab1">
+    ${renderGroundtruth(task)}
+  </div>`;
+
+  // Tab 2: Test Results
+  html += `<div class="tab-content ${currentTab === 2 ? 'active' : ''}" id="tab2">
+    ${renderTestResults(task, trial)}
+  </div>`;
+
+  // Tab 3: Trajectory (loaded on demand)
+  html += `<div class="tab-content ${currentTab === 3 ? 'active' : ''}" id="tab3">
+    <div class="traj-loading" id="trajContent">Loading trajectory...</div>
+  </div>`;
+
+  // Tab 4: Code (loaded on demand)
+  html += `<div class="tab-content ${currentTab === 4 ? 'active' : ''}" id="tab4">
+    <div class="traj-loading" id="codeContent">Loading code files...</div>
+  </div>`;
+
+  // Tab 5: Environment
+  html += `<div class="tab-content ${currentTab === 5 ? 'active' : ''}" id="tab5">
+    <div class="env-content">${esc(task.env_info || 'No environment info available.')}</div>
+  </div>`;
+
+  html += `</div>`;
+  content.innerHTML = html;
+
+  // Load on-demand data for trajectory/code tabs
+  if (currentTab === 3 || currentTab === 4) {
+    loadTrialDetail(task.task_id, trial.dir_name);
+  }
+}
+
+window.switchTab = function(idx) {
+  currentTab = idx;
+  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === idx));
+  document.querySelectorAll('.tab-content').forEach((t, i) => t.classList.toggle('active', i === idx));
+
+  if ((idx === 3 || idx === 4) && currentTaskId && currentTrialIdx != null) {
+    const task = tasks.find(t => t.task_id === currentTaskId);
+    const trial = task.trials[currentTrialIdx];
+    loadTrialDetail(task.task_id, trial.dir_name);
+  }
+};
+
+// ── Groundtruth rendering ──
+function renderGroundtruth(task) {
+  if (!task.groundtruth) return '<p style="color:var(--fg2)">No groundtruth available.</p>';
+
+  if (task.groundtruth_type === 'constraint') {
+    // Render constraint cards
+    let html = '<h3 style="margin-bottom:12px">Field Constraints</h3>';
+    const fc = task.groundtruth.field_constraints || {};
+    for (const [field, constraints] of Object.entries(fc)) {
+      html += `<div class="gt-constraint-card">
+        <div class="field-name">${esc(field)}</div>
+        <div class="constraint-detail">
+          ${Object.entries(constraints).map(([k, v]) =>
+            `<span><strong>${esc(k)}:</strong> ${esc(JSON.stringify(v))}</span>`
+          ).join('')}
+        </div>
+      </div>`;
+    }
+    // Cross-field rules
+    const cfr = task.groundtruth.cross_field_rules;
+    if (cfr && Object.keys(cfr).length > 0) {
+      html += '<h3 style="margin:16px 0 12px">Cross-Field Rules</h3>';
+      html += '<div class="gt-json">' + esc(JSON.stringify(cfr, null, 2)) + '</div>';
+    }
+    return html;
+  }
+
+  // freeform: JSON highlight
+  return '<div class="gt-json">' + esc(JSON.stringify(task.groundtruth, null, 2)) + '</div>';
+}
+
+// ── Test results rendering ──
+function renderTestResults(task, trial) {
+  const perTest = trial.per_test || [];
+  const annotations = task.test_annotations || [];
+
+  if (perTest.length === 0 && annotations.length === 0) {
+    return '<p style="color:var(--fg2)">No test results available.</p>';
+  }
+
+  const passed = perTest.filter(t => t.status === 'PASSED').length;
+  const failed = perTest.filter(t => t.status === 'FAILED').length;
+  const skipped = perTest.filter(t => t.status === 'SKIPPED').length;
+
+  // Build annotation lookup
+  const annoMap = {};
+  annotations.forEach(a => { annoMap[a.name] = a; });
+
+  // Merge: use perTest order, supplement with annotation info
+  let prevClass = '';
+  let rows = '';
+  let idx = 0;
+
+  // Build test list: prefer perTest order, fallback to annotations order
+  const testList = perTest.length > 0
+    ? perTest.map(pt => ({ name: pt.name, status: pt.status, ...(annoMap[pt.name] || {}) }))
+    : annotations.map(a => ({ name: a.name, status: null, ...a }));
+
+  testList.forEach(test => {
+    idx++;
+    const anno = annoMap[test.name] || {};
+    const cls = anno.class || test.class || '';
+    if (cls !== prevClass) {
+      rows += `<tr class="class-sep"><td colspan="5">${esc(cls)}</td></tr>`;
+      prevClass = cls;
+    }
+    const statusCls = test.status === 'PASSED' ? 'status-pass' : test.status === 'FAILED' ? 'status-fail' : 'status-skip';
+    const weight = anno.weight || test.weight || '—';
+    const doc = (anno.docstring || test.docstring || '').split('\n')[0];
+    rows += `<tr>
+      <td>${idx}</td>
+      <td style="font-family:monospace;font-size:11px">${esc(test.name)}</td>
+      <td class="docstring" title="${esc(anno.docstring || test.docstring || '')}">${esc(doc)}</td>
+      <td class="${statusCls}">${test.status || '—'}</td>
+      <td style="text-align:center">${weight}</td>
+    </tr>`;
+  });
+
+  let html = `<div class="test-summary">
+    <div class="test-stat"><div class="num" style="color:var(--green)">${passed}</div><div class="lbl">PASSED</div></div>
+    <div class="test-stat"><div class="num" style="color:var(--red)">${failed}</div><div class="lbl">FAILED</div></div>
+    <div class="test-stat"><div class="num" style="color:var(--fg3)">${skipped}</div><div class="lbl">SKIPPED</div></div>
+    <div class="test-stat"><div class="num">${perTest.length || annotations.length}</div><div class="lbl">TOTAL</div></div>
+  </div>
+  <table class="test-table">
+    <thead><tr><th>#</th><th>Test Name</th><th>Description</th><th>Status</th><th style="text-align:center">Weight</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+
+  // Process score section
+  if (trial.process_score) {
+    const ps = trial.process_score;
+    const dimMax = { target_url: 15, wrote_script: 15, fetched_pages: 20, partial_data: 30, attempted_write: 20 };
+    html += `<div class="process-score-section">
+      <h4>Process Score: ${ps.process_score_pct != null ? ps.process_score_pct.toFixed(1) : ps.raw_score}% (raw: ${ps.raw_score}/100, steps: ${ps.steps})</h4>
+      ${ps.dimensions ? Object.entries(ps.dimensions).map(([dim, val]) => {
+        const max = dimMax[dim] || 20;
+        const pct = (val / max * 100).toFixed(0);
+        return `<div class="dim-bar">
+          <span class="dim-name">${esc(dim)}</span>
+          <div class="dim-track"><div class="dim-fill" style="width:${pct}%;background:${scoreColor(val/max*100)}"></div></div>
+          <span class="dim-val">${val}/${max}</span>
+        </div>`;
+      }).join('') : ''}
+    </div>`;
+  }
+
+  return html;
+}
+
+// ── Load trial detail (trajectory + code) ──
+function loadTrialDetail(taskId, dirName) {
+  const cacheKey = `${taskId}/${dirName}`;
+  if (trialDetailCache[cacheKey]) {
+    renderTrajectory(trialDetailCache[cacheKey]);
+    renderCode(trialDetailCache[cacheKey]);
+    return;
+  }
+
+  // API mode: use /api/trial; Static mode: use viewer_trials/ files
+  const url = apiMode
+    ? `/api/trial?root=${encodeURIComponent(apiRoot)}&task=${encodeURIComponent(taskId)}&trial=${encodeURIComponent(dirName)}`
+    : `viewer_trials/${taskId}/${dirName}.json`;
+  fetch(url)
+    .then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    })
+    .then(data => {
+      trialDetailCache[cacheKey] = data;
+      renderTrajectory(data);
+      renderCode(data);
+    })
+    .catch(err => {
+      const trajEl = document.getElementById('trajContent');
+      const codeEl = document.getElementById('codeContent');
+      const msg = `<p style="color:var(--red)">Failed to load: ${esc(err.message)}</p>
+        <p style="color:var(--fg2);margin-top:8px">If using file:// protocol, please start a local server:<br>
+        <code>python -m http.server 8000</code><br>
+        Then open <code>http://localhost:8000/eval_viewer.html</code></p>`;
+      if (trajEl) trajEl.innerHTML = msg;
+      if (codeEl) codeEl.innerHTML = msg;
+    });
+}
+
+// ── Render trajectory ──
+function renderTrajectory(data) {
+  const el = document.getElementById('trajContent');
+  if (!el) return;
+  const events = data.trajectory || [];
+  if (events.length === 0) {
+    el.innerHTML = '<p style="color:var(--fg2)">No trajectory data available.</p>';
+    return;
+  }
+
+  // Group into steps
+  const steps = [];
+  let currentStep = null;
+  events.forEach(evt => {
+    if (evt.type === 'step_start') {
+      currentStep = { events: [], tokens: null };
+      steps.push(currentStep);
+    } else if (evt.type === 'step_finish') {
+      if (currentStep) {
+        currentStep.tokens = evt.part?.tokens;
+      }
+    } else if (currentStep) {
+      currentStep.events.push(evt);
+    }
+  });
+
+  // Filters
+  let html = `<div class="traj-filters">
+    <label><input type="checkbox" checked onchange="toggleTrajFilter('reasoning',this.checked)"> Reasoning</label>
+    <label><input type="checkbox" checked onchange="toggleTrajFilter('text',this.checked)"> Text</label>
+    <label><input type="checkbox" checked onchange="toggleTrajFilter('tool_use',this.checked)"> Tool Use</label>
+    <span style="color:var(--fg3);font-size:12px;margin-left:16px">${steps.length} steps, ${events.length} events</span>
+  </div>`;
+
+  steps.forEach((step, i) => {
+    const summary = step.events.map(e => {
+      if (e.type === 'text') return 'text';
+      if (e.type === 'reasoning') return 'reasoning';
+      if (e.type === 'tool_use') return e.part?.state?.title || e.part?.tool || 'tool';
+      return e.type;
+    }).join(', ');
+    const tokens = step.tokens ? `${step.tokens.input}+${step.tokens.output}` : '';
+
+    html += `<div class="traj-step">
+      <div class="traj-step-header" onclick="toggleStep(${i})">
+        <span class="step-num">Step ${i + 1}</span>
+        <span class="step-summary">${esc(summary)}</span>
+        <span class="step-tokens">${tokens}</span>
+      </div>
+      <div class="traj-step-body" id="step-body-${i}">
+        ${step.events.map(evt => renderTrajEvent(evt)).join('')}
+      </div>
+    </div>`;
+  });
+
+  el.innerHTML = html;
+}
+
+function renderTrajEvent(evt) {
+  const type = evt.type;
+  const part = evt.part || {};
+
+  if (type === 'reasoning') {
+    return `<div class="traj-event reasoning">
+      <div class="event-label reasoning">REASONING</div>
+      <pre>${esc(part.text || '')}</pre>
+    </div>`;
+  }
+
+  if (type === 'text') {
+    return `<div class="traj-event text">
+      <div class="event-label text">TEXT</div>
+      <pre>${esc(part.text || '')}</pre>
+    </div>`;
+  }
+
+  if (type === 'tool_use') {
+    const state = part.state || {};
+    const tool = state.title || part.tool || 'tool';
+    const input = state.input || {};
+    const output = state.output || '';
+    let inputStr = '';
+    if (typeof input === 'object') {
+      if (input.command) inputStr = input.command;
+      else if (input.path) inputStr = `${input.path}${input.content ? '\n' + input.content : ''}`;
+      else inputStr = JSON.stringify(input, null, 2);
+    } else {
+      inputStr = String(input);
+    }
+    return `<div class="traj-event tool_use">
+      <div class="event-label tool">${esc(tool.toUpperCase())}</div>
+      <pre>${esc(inputStr)}</pre>
+      ${output ? `<details style="margin-top:4px"><summary style="cursor:pointer;color:var(--fg2);font-size:11px">Output (${typeof output === 'string' ? output.length : '?'} chars)</summary><pre style="margin-top:4px">${esc(typeof output === 'string' ? output : JSON.stringify(output, null, 2))}</pre></details>` : ''}
+    </div>`;
+  }
+
+  return '';
+}
+
+window.toggleStep = function(i) {
+  const body = document.getElementById(`step-body-${i}`);
+  if (body) body.classList.toggle('open');
+};
+
+window.toggleTrajFilter = function(type, show) {
+  document.querySelectorAll(`.traj-event.${type}`).forEach(el => {
+    el.style.display = show ? '' : 'none';
+  });
+};
+
+// ── Render code files ──
+function renderCode(data) {
+  const el = document.getElementById('codeContent');
+  if (!el) return;
+  const files = data.code_files || {};
+  const fileNames = Object.keys(files);
+  if (fileNames.length === 0) {
+    el.innerHTML = '<p style="color:var(--fg2)">No code files found.</p>';
+    return;
+  }
+
+  let html = `<div class="code-tabs">${fileNames.map((f, i) => `<div class="code-tab ${i === 0 ? 'active' : ''}" onclick="switchCodeTab(${i})">${esc(f)}</div>`).join('')}</div>`;
+  fileNames.forEach((f, i) => {
+    html += `<div class="code-block" id="code-block-${i}" style="${i > 0 ? 'display:none' : ''}">${esc(files[f])}</div>`;
+  });
+  el.innerHTML = html;
+}
+
+window.switchCodeTab = function(idx) {
+  document.querySelectorAll('.code-tab').forEach((t, i) => t.classList.toggle('active', i === idx));
+  document.querySelectorAll('.code-block').forEach((b, i) => { b.style.display = i === idx ? '' : 'none'; });
+};
+
+// ── Initial render is triggered by initFromData() ──
+
+})();
+</script>
+</body>
+</html>
